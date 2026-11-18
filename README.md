@@ -1,1 +1,189 @@
-# DabbaDash
+# DabbaDash — LastMile Bite Battle
+
+DabbaDash is a hyperlocal cloud-kitchen operations dashboard for managing orders from kitchen preparation through courier dispatch and delivery. A React dashboard consumes a local Express REST API backed by SQLite.
+
+## Problem and solution
+
+Cloud-kitchen operators need one view of order progress, kitchen workload, courier availability, and delivery handoffs. DabbaDash brings those workflows together in one dashboard, with shared order data and a lightweight local API.
+
+## Features
+
+- **Overview:** order KPIs, brand distribution, kitchen activity, and delayed-kitchen alerts.
+- **All Orders:** search and filter the API-backed order list.
+- **Kitchen Board:** advance orders through Received, In Kitchen, Packed, Out for Delivery, and Delivered.
+- **Rider Dispatch:** review available couriers and recommendations, assign a courier, and update courier availability.
+- **Delivery Batching:** generate batches from Packed orders, review distance and courier recommendations, assign a courier, and advance batch status.
+- **Live Map:** inspect order and courier markers with details on a schematic demo map.
+- **Customer Tracking:** search orders and view current status, courier, progress, and a demo ETA.
+- **Analytics:** current order totals and distributions by status and brand, delivered/active counts, and recorded kitchen preparation times.
+
+## Technology
+
+- React 18, TypeScript, Vite, Tailwind CSS
+- Lucide React icons and Recharts
+- Node.js, Express 4, TypeScript, `better-sqlite3` (SQLite)
+
+## Architecture
+
+```mermaid
+flowchart LR
+  UI[React dashboard] -->|HTTP JSON| API[Express REST API]
+  API --> DB[(SQLite database)]
+  UI --> State[Shared API data context]
+  State --> UI
+```
+
+The frontend API client uses `VITE_API_BASE_URL`. `ApiDataContext` shares brands, orders, couriers, zones, and batches between pages; order and courier live data refreshes periodically. The backend creates or migrates the SQLite schema on startup and returns JSON data and errors.
+
+## Project structure
+
+```text
+.
+├── backend/
+│   ├── src/
+│   │   ├── db/              # SQLite connection, schema/migrations, seed data
+│   │   ├── routes/api.ts    # REST endpoints and business rules
+│   │   ├── types/           # API and database types
+│   │   └── index.ts         # Express server and health endpoint
+│   ├── data/                # Local SQLite database (ignored by Git)
+│   └── package.json
+├── src/
+│   ├── components/          # Shared layout, UI, and overview components
+│   ├── contexts/            # Shared API-backed dashboard state
+│   ├── pages/               # The eight dashboard pages
+│   ├── services/            # Centralized frontend API client
+│   └── analytics.ts         # Kitchen timing and alert calculations
+├── .env.example             # Frontend API URL example
+└── package.json
+```
+
+## Prerequisites
+
+- Node.js 20 or newer and npm.
+- The project uses `better-sqlite3`, which includes a native SQLite binding. Install dependencies in both the project root and `backend/`.
+
+## Installation and development
+
+Open two terminals from the project root.
+
+**Frontend terminal:**
+
+```powershell
+npm install
+Copy-Item .env.example .env
+npm run dev
+```
+
+Vite serves the dashboard at `http://localhost:5173`.
+
+**Backend terminal:**
+
+```powershell
+Set-Location backend
+npm install
+npm run db:seed
+npm run dev
+```
+
+The API listens at `http://localhost:3000` by default. It creates the schema automatically when it starts. The seed command also initializes the schema, and inserts the existing demo fixtures only when the database has no brands; it skips seeding rather than replacing populated data.
+
+For production builds:
+
+```powershell
+# From the project root
+npm run build
+npm run preview
+
+# From backend/
+npm run typecheck
+npm run build
+npm start
+```
+
+There is no automated test script in either package manifest. The ESLint script exists in the frontend package, but this repository currently has no ESLint configuration; `npm run lint` exits with ESLint's “couldn't find a configuration file” error.
+
+## Environment variables
+
+| Variable | Used by | Default | Description |
+|---|---|---|---|
+| `VITE_API_BASE_URL` | Frontend | `http://localhost:3000/api` | API base URL used by the Vite app. Set it in the root `.env` file. |
+| `PORT` | Backend | `3000` | Express listening port. |
+| `CORS_ORIGIN` | Backend | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated allowed browser origins. |
+| `DABBADASH_DB_PATH` | Backend | `backend/data/dabbadash.db` | Optional absolute path for the SQLite database. |
+
+The checked-in `.env.example` contains only the frontend API URL. Do not put secrets in it; local `.env` files and SQLite databases are excluded from Git.
+
+## REST API
+
+All data endpoints return a `{ "data": ... }` envelope. Errors use `{ "error": { "code": "...", "message": "..." } }`.
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `GET` | `/api/health` | Check server and database availability. |
+| `GET` | `/api/brands` | List brands. |
+| `GET` | `/api/brands/:id` | Get a brand. |
+| `GET` | `/api/orders` | List orders. |
+| `GET` | `/api/orders/:id` | Get an order. |
+| `POST` | `/api/orders` | Create an order from existing brand/menu data. |
+| `PATCH` | `/api/orders/:id/status` | Change an order status. |
+| `GET` | `/api/orders/:id/recommended-couriers` | Recommend eligible couriers for an order. |
+| `PATCH` | `/api/orders/:id/assign-courier` | Assign a courier to an order. |
+| `GET` | `/api/couriers` | List couriers and active workloads. |
+| `GET` | `/api/couriers/:id` | Get a courier. |
+| `PATCH` | `/api/couriers/:id/status` | Update courier availability. |
+| `GET` | `/api/zones` | List delivery zones and current counts. |
+| `GET` | `/api/batches` | List delivery batches. |
+| `GET` | `/api/batches/:id` | Get a batch and its orders. |
+| `GET` | `/api/batches/:id/recommended-couriers` | Recommend couriers for a batch. |
+| `POST` | `/api/batches/generate` | Generate batches from eligible Packed orders. |
+| `POST` | `/api/batches` | Create a batch with `{ "orderIds": [1, 2] }`. |
+| `PATCH` | `/api/batches/:id/assign-courier` | Assign a courier to a pending batch. |
+| `PATCH` | `/api/batches/:id/status` | Advance or cancel a batch. |
+
+Order statuses are `Received`, `In Kitchen`, `Packed`, `Out for Delivery`, and `Delivered`. The API also preserves and returns legacy `Cancelled` orders. Batch statuses are `pending`, `assigned`, `in-progress`, `completed`, and `cancelled`.
+
+## Database and seed data
+
+The canonical backend is `backend/`. Its SQLite file defaults to `backend/data/dabbadash.db`; the database and SQLite sidecar files are ignored by Git. Schema changes are additive migrations. To seed a new local database:
+
+```powershell
+Set-Location backend
+npm run db:seed
+```
+
+To use a separate database, set `DABBADASH_DB_PATH` to an absolute path before running the seed command or server. The seed operation does not overwrite existing records; if brands already exist, it skips fixture insertion.
+
+## Demo workflow
+
+1. Start the frontend and backend using the commands above.
+2. Create an order through `POST /api/orders` using an existing brand and menu item, or select an existing order.
+3. Advance it on the Kitchen Board to **In Kitchen**, then **Packed**.
+4. Generate a batch from eligible Packed orders and assign one of the recommended available couriers.
+5. Inspect the assigned order and courier on the Live Map, then search the order in Customer Tracking.
+6. Advance the order to **Out for Delivery** and **Delivered**; review the updated orders and Analytics.
+
+The backend exposes a health check at `http://localhost:3000/api/health`.
+
+## Screenshots
+
+Screenshots are not included in this repository yet.
+
+- Overview: _Screenshot placeholder — add `docs/screenshots/overview.png` when available._
+- Live Map: _Screenshot placeholder — add `docs/screenshots/live-map.png` when available._
+- Analytics: _Screenshot placeholder — add `docs/screenshots/analytics.png` when available._
+
+## Known limitations
+
+- Live Map positions are simulated. The map is a schematic SVG view; zone circles and anchors are illustrative, not geographic boundaries or real GPS.
+- Delivery batching uses real order coordinates only when supplied. Otherwise it labels and uses simulated zone-based locations; reported distances are approximate straight-line estimates.
+- Customer delivery ETAs are explicitly demo estimates, not route-aware predictions.
+- Preparation analytics and 20-minute alerts rely on kitchen-stage timestamps recorded by the current API. Older orders without those timestamps are excluded until they pass through the kitchen status transitions again.
+- The dashboard is a local demo without authentication, customer notifications, or production hosting configuration. Settings and Log Out are visual placeholders.
+- `npm run lint` is currently blocked by the missing ESLint configuration noted above.
+
+## Future enhancements
+
+- Integrate a real mapping/geocoding provider and opted-in courier GPS.
+- Add authentication, roles, and operational settings.
+- Add customer notifications and route-aware delivery estimates.
+- Add automated API/component tests and configure the existing lint script.
