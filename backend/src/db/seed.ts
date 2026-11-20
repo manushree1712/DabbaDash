@@ -6,7 +6,7 @@ interface InsertBrand { name: string; cuisine_type: string; color: string }
 interface InsertMenuItem { brand_id: number; name: string; description: string; price: number; category: string }
 interface InsertZone { name: string; sector: string; area_coverage: string; base_delivery_fee: number }
 interface InsertCourier { name: string; phone: string; vehicle_type: string; status: string; current_zone_id: number | null; deliveries_today: number; rating: number; earnings_today: number }
-interface InsertOrder { order_ref: string; brand_id: number; customer_name: string; customer_phone: string; delivery_address: string; delivery_zone_id: number; courier_id: number | null; status: string; total_amount: number; prep_time_minutes: number; placed_at: string }
+interface InsertOrder { order_ref: string; brand_id: number; customer_name: string; customer_phone: string; delivery_address: string; delivery_zone_id: number; courier_id: number | null; status: string; total_amount: number; prep_time_minutes: number; placed_at: string; kitchen_started_at?: string | null; kitchen_completed_at?: string | null }
 interface InsertOrderItem { order_id: number; menu_item_id: number; quantity: number; unit_price: number; special_instructions?: string }
 
 export function seedDatabase(): void {
@@ -25,15 +25,30 @@ export function seedDatabase(): void {
     'INSERT INTO couriers (name, phone, vehicle_type, status, current_zone_id, deliveries_today, rating, earnings_today) VALUES (@name, @phone, @vehicle_type, @status, @current_zone_id, @deliveries_today, @rating, @earnings_today)'
   );
   const insertOrder = db.prepare<InsertOrder>(
-    'INSERT INTO orders (order_ref, brand_id, customer_name, customer_phone, delivery_address, delivery_zone_id, courier_id, status, total_amount, prep_time_minutes, placed_at) VALUES (@order_ref, @brand_id, @customer_name, @customer_phone, @delivery_address, @delivery_zone_id, @courier_id, @status, @total_amount, @prep_time_minutes, @placed_at)'
+    'INSERT INTO orders (order_ref, brand_id, customer_name, customer_phone, delivery_address, delivery_zone_id, courier_id, status, total_amount, prep_time_minutes, placed_at, kitchen_started_at, kitchen_completed_at) VALUES (@order_ref, @brand_id, @customer_name, @customer_phone, @delivery_address, @delivery_zone_id, @courier_id, @status, @total_amount, @prep_time_minutes, @placed_at, @kitchen_started_at, @kitchen_completed_at)'
   );
   const insertOrderItem = db.prepare<InsertOrderItem>(
     'INSERT INTO order_items (order_id, menu_item_id, quantity, unit_price, special_instructions) VALUES (@order_id, @menu_item_id, @quantity, @unit_price, @special_instructions)'
   );
 
   const seed = db.transaction(() => {
-    const count = (db.prepare('SELECT COUNT(*) as c FROM brands').get() as { c: number }).c;
-    if (count > 0) {
+    const tables = [
+      'brands',
+      'menu_items',
+      'delivery_zones',
+      'couriers',
+      'orders',
+      'order_items',
+      'delivery_batches',
+      'delivery_batch_orders',
+    ];
+    const hasExistingData = tables.some(
+      (table) =>
+        (db.prepare(`SELECT EXISTS(SELECT 1 FROM ${table} LIMIT 1) AS present`).get() as {
+          present: number;
+        }).present === 1
+    );
+    if (hasExistingData) {
       return false;
     }
 
@@ -94,7 +109,7 @@ export function seedDatabase(): void {
       { name: 'Amit Dubey',    phone: '+91 96001 23456', vehicle_type: 'bike',    status: 'on-delivery', current_zone_id: 3, deliveries_today: 17, rating: 4.9, earnings_today: 1360 },
       { name: 'Vikram Singh',  phone: '+91 95001 23456', vehicle_type: 'scooter', status: 'available',   current_zone_id: null, deliveries_today: 21, rating: 4.7, earnings_today: 1680 },
       { name: 'Ravi Patil',    phone: '+91 94001 23456', vehicle_type: 'bicycle', status: 'on-delivery', current_zone_id: 4, deliveries_today: 15, rating: 4.5, earnings_today: 1200 },
-      { name: 'Nitin Bhosle',  phone: '+91 93001 23456', vehicle_type: 'bike',    status: 'available',   current_zone_id: null, deliveries_today: 28, rating: 4.9, earnings_today: 2240 },
+      { name: 'Nitin Bhosle',  phone: '+91 93001 23456', vehicle_type: 'bike',    status: 'on-delivery', current_zone_id: 2,    deliveries_today: 28, rating: 4.9, earnings_today: 2240 },
     ];
     couriers.forEach(c => insertCourier.run(c));
     // courier IDs: 1=Rahul, 2=Suresh, 3=Amit, 4=Vikram, 5=Ravi, 6=Nitin
@@ -104,24 +119,26 @@ export function seedDatabase(): void {
     const ago = (mins: number) => new Date(now.getTime() - mins * 60000).toISOString().replace('T', ' ').slice(0, 19);
 
     const orders: InsertOrder[] = [
-      { order_ref: 'DD-3001', brand_id: 1, customer_name: 'Priya Sharma',   customer_phone: '+91 98765 43210', delivery_address: 'Flat 12, Andheri West', delivery_zone_id: 1, courier_id: 1,    status: 'preparing',  total_amount: 410,  prep_time_minutes: 25, placed_at: ago(2) },
-      { order_ref: 'DD-3002', brand_id: 2, customer_name: 'Arjun Mehta',    customer_phone: '+91 87654 32109', delivery_address: '7B, Bandra East',       delivery_zone_id: 2, courier_id: 2,    status: 'ready',      total_amount: 360,  prep_time_minutes: 18, placed_at: ago(5) },
+      { order_ref: 'DD-3001', brand_id: 1, customer_name: 'Priya Sharma',   customer_phone: '+91 98765 43210', delivery_address: 'Flat 12, Andheri West', delivery_zone_id: 1, courier_id: 1,    status: 'preparing',  total_amount: 410,  prep_time_minutes: 25, placed_at: ago(30), kitchen_started_at: ago(25) },
+      { order_ref: 'DD-3002', brand_id: 2, customer_name: 'Arjun Mehta',    customer_phone: '+91 87654 32109', delivery_address: '7B, Bandra East',       delivery_zone_id: 2, courier_id: null, status: 'ready',      total_amount: 360,  prep_time_minutes: 18, placed_at: ago(40), kitchen_started_at: ago(35), kitchen_completed_at: ago(17) },
       { order_ref: 'DD-3003', brand_id: 1, customer_name: 'Sneha Kapoor',   customer_phone: '+91 76543 21098', delivery_address: '22, Juhu Lane',          delivery_zone_id: 1, courier_id: null, status: 'pending',    total_amount: 480,  prep_time_minutes: 30, placed_at: ago(1) },
-      { order_ref: 'DD-3004', brand_id: 3, customer_name: 'Rohit Verma',    customer_phone: '+91 65432 10987', delivery_address: '5, Powai Heights',       delivery_zone_id: 3, courier_id: 3,    status: 'dispatched', total_amount: 215,  prep_time_minutes: 12, placed_at: ago(14) },
+      { order_ref: 'DD-3004', brand_id: 3, customer_name: 'Rohit Verma',    customer_phone: '+91 65432 10987', delivery_address: '5, Powai Heights',       delivery_zone_id: 3, courier_id: 3,    status: 'dispatched', total_amount: 215,  prep_time_minutes: 12, placed_at: ago(65), kitchen_started_at: ago(60), kitchen_completed_at: ago(48) },
       { order_ref: 'DD-3005', brand_id: 2, customer_name: 'Anjali Nair',    customer_phone: '+91 54321 09876', delivery_address: '18, Malad West',          delivery_zone_id: 4, courier_id: null, status: 'pending',    total_amount: 520,  prep_time_minutes: 20, placed_at: ago(3) },
-      { order_ref: 'DD-3006', brand_id: 3, customer_name: 'Kunal Desai',    customer_phone: '+91 43210 98765', delivery_address: '9, Goregaon East',       delivery_zone_id: 4, courier_id: 5,    status: 'preparing',  total_amount: 230,  prep_time_minutes: 15, placed_at: ago(8) },
-      { order_ref: 'DD-3007', brand_id: 1, customer_name: 'Meera Joshi',    customer_phone: '+91 32109 87654', delivery_address: '33, Versova',             delivery_zone_id: 1, courier_id: 1,    status: 'dispatched', total_amount: 500,  prep_time_minutes: 28, placed_at: ago(20) },
-      { order_ref: 'DD-3008', brand_id: 2, customer_name: 'Siddharth Rao',  customer_phone: '+91 21098 76543', delivery_address: '11, Lokhandwala',         delivery_zone_id: 1, courier_id: 6,    status: 'delivered',  total_amount: 450,  prep_time_minutes: 16, placed_at: ago(35) },
+      { order_ref: 'DD-3006', brand_id: 3, customer_name: 'Kunal Desai',    customer_phone: '+91 43210 98765', delivery_address: '9, Goregaon East',       delivery_zone_id: 4, courier_id: 5,    status: 'preparing',  total_amount: 230,  prep_time_minutes: 15, placed_at: ago(30), kitchen_started_at: ago(25) },
+      { order_ref: 'DD-3007', brand_id: 1, customer_name: 'Meera Joshi',    customer_phone: '+91 32109 87654', delivery_address: '33, Versova',             delivery_zone_id: 1, courier_id: 1,    status: 'dispatched', total_amount: 500,  prep_time_minutes: 28, placed_at: ago(70), kitchen_started_at: ago(65), kitchen_completed_at: ago(37) },
+      { order_ref: 'DD-3008', brand_id: 2, customer_name: 'Siddharth Rao',  customer_phone: '+91 21098 76543', delivery_address: '11, Lokhandwala',         delivery_zone_id: 1, courier_id: 6,    status: 'delivered',  total_amount: 450,  prep_time_minutes: 16, placed_at: ago(90), kitchen_started_at: ago(85), kitchen_completed_at: ago(69) },
       { order_ref: 'DD-3009', brand_id: 3, customer_name: 'Pooja Pillai',   customer_phone: '+91 10987 65432', delivery_address: '6, Chembur Colony',       delivery_zone_id: 3, courier_id: null, status: 'cancelled',  total_amount: 140,  prep_time_minutes: 10, placed_at: ago(25) },
-      { order_ref: 'DD-3010', brand_id: 1, customer_name: 'Tanmay Shah',    customer_phone: '+91 90876 54321', delivery_address: '27, Thane West',          delivery_zone_id: 3, courier_id: 4,    status: 'delivered',  total_amount: 340,  prep_time_minutes: 22, placed_at: ago(50) },
+      { order_ref: 'DD-3010', brand_id: 1, customer_name: 'Tanmay Shah',    customer_phone: '+91 90876 54321', delivery_address: '27, Thane West',          delivery_zone_id: 3, courier_id: 4,    status: 'delivered',  total_amount: 340,  prep_time_minutes: 22, placed_at: ago(110), kitchen_started_at: ago(105), kitchen_completed_at: ago(83) },
       { order_ref: 'DD-3011', brand_id: 2, customer_name: 'Deepa Iyer',     customer_phone: '+91 80765 43210', delivery_address: '3, Kharghar',              delivery_zone_id: 3, courier_id: null, status: 'pending',    total_amount: 440,  prep_time_minutes: 20, placed_at: ago(4) },
-      { order_ref: 'DD-3012', brand_id: 1, customer_name: 'Varun Chopra',   customer_phone: '+91 70654 32109', delivery_address: '14, Borivali East',       delivery_zone_id: 4, courier_id: 2,    status: 'preparing',  total_amount: 570,  prep_time_minutes: 25, placed_at: ago(10) },
-      { order_ref: 'DD-3013', brand_id: 3, customer_name: 'Nisha Agarwal',  customer_phone: '+91 60543 21098', delivery_address: '8, Andheri East',         delivery_zone_id: 1, courier_id: 3,    status: 'ready',      total_amount: 190,  prep_time_minutes: 12, placed_at: ago(16) },
-      { order_ref: 'DD-3014', brand_id: 2, customer_name: 'Kartik Bhatt',   customer_phone: '+91 50432 10987', delivery_address: '19, Santacruz',           delivery_zone_id: 2, courier_id: 6,    status: 'dispatched', total_amount: 420,  prep_time_minutes: 18, placed_at: ago(28) },
+      { order_ref: 'DD-3012', brand_id: 1, customer_name: 'Varun Chopra',   customer_phone: '+91 70654 32109', delivery_address: '14, Borivali East',       delivery_zone_id: 4, courier_id: 2,    status: 'preparing',  total_amount: 570,  prep_time_minutes: 25, placed_at: ago(30), kitchen_started_at: ago(25) },
+      { order_ref: 'DD-3013', brand_id: 3, customer_name: 'Nisha Agarwal',  customer_phone: '+91 60543 21098', delivery_address: '8, Andheri East',         delivery_zone_id: 1, courier_id: null, status: 'ready',      total_amount: 190,  prep_time_minutes: 12, placed_at: ago(45), kitchen_started_at: ago(40), kitchen_completed_at: ago(28) },
+      { order_ref: 'DD-3014', brand_id: 2, customer_name: 'Kartik Bhatt',   customer_phone: '+91 50432 10987', delivery_address: '19, Santacruz',           delivery_zone_id: 2, courier_id: 6,    status: 'dispatched', total_amount: 420,  prep_time_minutes: 18, placed_at: ago(80), kitchen_started_at: ago(75), kitchen_completed_at: ago(57) },
       { order_ref: 'DD-3015', brand_id: 1, customer_name: 'Ritika Sinha',   customer_phone: '+91 40321 09876', delivery_address: '25, Dadar',               delivery_zone_id: 4, courier_id: null, status: 'pending',    total_amount: 640,  prep_time_minutes: 30, placed_at: ago(2) },
     ];
 
     orders.forEach(o => {
+      if (o.kitchen_started_at === undefined) o.kitchen_started_at = null;
+      if (o.kitchen_completed_at === undefined) o.kitchen_completed_at = null;
       const result = insertOrder.run(o) as { lastInsertRowid: number };
       const orderId = result.lastInsertRowid;
 
@@ -148,14 +165,25 @@ export function seedDatabase(): void {
       items.forEach(item => insertOrderItem.run(item));
     });
 
+    db.prepare(
+      `INSERT INTO app_metadata (key, value) VALUES ('demo_data_seeded', 'true')
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+    ).run();
     return true;
   });
 
   if (seed()) {
     console.log('✅ Seed complete — 3 brands, 20 menu items, 15 orders, 6 couriers, 4 zones.');
   } else {
-    console.log('⏭  Database already contains brands — skipping seed to preserve existing data.');
+    console.log('⏭  Database already contains records — skipping seed to preserve existing data.');
   }
+}
+
+export function hasDemoSeedData(): boolean {
+  const marker = getDb()
+    .prepare("SELECT value FROM app_metadata WHERE key = 'demo_data_seeded'")
+    .get() as { value: string } | undefined;
+  return marker?.value === 'true';
 }
 
 if (require.main === module) {

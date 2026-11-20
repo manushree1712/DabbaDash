@@ -4,6 +4,7 @@ import { Server } from 'http';
 import { ApiError } from './apiError';
 import { closeDb, getDb } from './db/connection';
 import { createSchema } from './db/schema';
+import { hasDemoSeedData, seedDatabase } from './db/seed';
 import { apiRouter } from './routes/api';
 
 const defaultOrigins = ['http://localhost:5173', 'http://127.0.0.1:5173'];
@@ -34,7 +35,11 @@ app.use(express.json({ limit: '1mb' }));
 app.get('/api/health', (_req, res) => {
   try {
     getDb().prepare('SELECT 1').get();
-    res.status(200).json({ status: 'ok', database: 'connected' });
+    res.status(200).json({
+      status: 'ok',
+      database: 'connected',
+      demoData: hasDemoSeedData(),
+    });
   } catch (error) {
     console.error('Health check could not reach the database.', error);
     res.status(503).json({ status: 'error', database: 'unavailable' });
@@ -87,6 +92,10 @@ app.use(errorHandler);
 let server: Server;
 try {
   createSchema();
+  const allowDemoSeed =
+    process.env.DABBADASH_DEMO_SEED === 'true' ||
+    (process.env.NODE_ENV !== 'production' && process.env.DABBADASH_DEMO_SEED !== 'false');
+  if (allowDemoSeed) seedDatabase();
   server = app.listen(port, host, () => {
     console.log(`DabbaDash API listening on http://${host}:${port}`);
   });

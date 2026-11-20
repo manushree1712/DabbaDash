@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Order, OrderStatus, Rider } from '../types';
-import { api } from '../services/api';
+import { api, ApiUnavailableError } from '../services/api';
+import { offlineDemoData } from '../data/offlineDemoData';
 import type {
   ApiBrand,
   ApiCourier,
@@ -25,6 +26,8 @@ interface ApiData {
   isLoading: boolean;
   error: string | null;
   liveUpdateError: string | null;
+  isDemoData: boolean;
+  isOfflineDemo: boolean;
   refresh: () => Promise<void>;
   getRecommendedCouriers: (orderId: number) => Promise<ApiCourierRecommendation[]>;
   assignCourier: (orderId: number, courierId: number) => Promise<ApiCourierAssignment>;
@@ -119,12 +122,15 @@ export function ApiDataProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [liveUpdateError, setLiveUpdateError] = useState<string | null>(null);
+  const [isDemoData, setIsDemoData] = useState(false);
+  const [isOfflineDemo, setIsOfflineDemo] = useState(false);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [nextBrands, nextOrders, nextCouriers, nextZones, nextBatches] = await Promise.all([
+      const [health, nextBrands, nextOrders, nextCouriers, nextZones, nextBatches] = await Promise.all([
+        api.getHealth(),
         api.getBrands(),
         api.getOrders(),
         api.getCouriers(),
@@ -136,8 +142,22 @@ export function ApiDataProvider({ children }: { children: ReactNode }) {
       setApiCouriers(nextCouriers);
       setZones(nextZones);
       setBatches(nextBatches);
+      setIsDemoData(health.demoData);
+      setIsOfflineDemo(false);
       setLiveUpdateError(null);
     } catch (requestError) {
+      if (requestError instanceof ApiUnavailableError) {
+        setBrands(offlineDemoData.brands);
+        setApiOrders(offlineDemoData.orders);
+        setApiCouriers(offlineDemoData.couriers);
+        setZones(offlineDemoData.zones);
+        setBatches(offlineDemoData.batches);
+        setIsDemoData(false);
+        setIsOfflineDemo(true);
+        setLiveUpdateError(null);
+        setError(null);
+        return;
+      }
       const message =
         requestError instanceof Error ? requestError.message : 'Unable to load dashboard data.';
       setError(message);
@@ -153,21 +173,29 @@ export function ApiDataProvider({ children }: { children: ReactNode }) {
 
   const refreshLiveState = useCallback(async () => {
     try {
-      const [nextOrders, nextCouriers, nextBatches] = await Promise.all([
+      const [health, nextBrands, nextOrders, nextCouriers, nextZones, nextBatches] = await Promise.all([
+        api.getHealth(),
+        api.getBrands(),
         api.getOrders(),
         api.getCouriers(),
+        api.getDeliveryZones(),
         api.getDeliveryBatches(),
       ]);
+      setBrands(nextBrands);
       setApiOrders(nextOrders);
       setApiCouriers(nextCouriers);
+      setZones(nextZones);
       setBatches(nextBatches);
+      setIsDemoData(health.demoData);
+      setIsOfflineDemo(false);
       setLiveUpdateError(null);
     } catch (requestError) {
+      if (requestError instanceof ApiUnavailableError && isOfflineDemo) return;
       setLiveUpdateError(
         requestError instanceof Error ? requestError.message : 'Unable to refresh live delivery data.'
       );
     }
-  }, []);
+  }, [isOfflineDemo]);
 
   useEffect(() => {
     let requestInFlight = false;
@@ -206,8 +234,31 @@ export function ApiDataProvider({ children }: { children: ReactNode }) {
   );
 
   const getRecommendedCouriers = useCallback(
-    (orderId: number) => api.getRecommendedCouriers(orderId),
-    []
+    (orderId: number) => {
+      if (!isOfflineDemo) return api.getRecommendedCouriers(orderId);
+      const order = offlineDemoData.orders.find((candidate) => candidate.id === orderId);
+      if (!order || order.courierId !== null || ['Delivered', 'Cancelled'].includes(order.status)) {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve(
+        offlineDemoData.couriers
+          .filter(
+            (courier) =>
+              courier.status === 'available' && courier.activeOrders < courier.maxActiveOrders
+          )
+          .map((courier) => ({
+            ...courier,
+            sameZone: courier.currentZoneId === order.deliveryZoneId,
+          }))
+          .sort(
+            (left, right) =>
+              Number(right.sameZone) - Number(left.sameZone) ||
+              left.activeOrders / left.maxActiveOrders - right.activeOrders / right.maxActiveOrders ||
+              right.rating - left.rating
+          )
+      );
+    },
+    [isOfflineDemo]
   );
 
   const assignCourier = useCallback(
@@ -294,6 +345,8 @@ export function ApiDataProvider({ children }: { children: ReactNode }) {
       isLoading,
       error,
       liveUpdateError,
+      isDemoData,
+      isOfflineDemo,
       refresh,
       getRecommendedCouriers,
       assignCourier,
@@ -314,6 +367,8 @@ export function ApiDataProvider({ children }: { children: ReactNode }) {
       generateDeliveryBatches,
       getRecommendedCouriers,
       isLoading,
+      isDemoData,
+      isOfflineDemo,
       liveUpdateError,
       refresh,
       updateCourierStatus,

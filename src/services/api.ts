@@ -14,6 +14,14 @@ interface ApiErrorResponse {
   };
 }
 
+export class ApiUnavailableError extends Error {}
+
+export interface ApiHealth {
+  status: 'ok';
+  database: 'connected';
+  demoData: boolean;
+}
+
 export type ApiOrderStatus =
   | 'Received'
   | 'In Kitchen'
@@ -126,7 +134,11 @@ export interface ApiDeliveryBatch {
   updatedAt: string;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  allowPlainResponse = false
+): Promise<T> {
   let response: Response;
   try {
     const headers = new Headers(init?.headers);
@@ -139,7 +151,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       headers,
     });
   } catch {
-    throw new Error(`Could not connect to the DabbaDash API at ${API_BASE_URL}.`);
+    throw new ApiUnavailableError(`Could not connect to the DabbaDash API at ${API_BASE_URL}.`);
   }
 
   let body: unknown;
@@ -156,7 +168,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     );
   }
 
-  if (typeof body !== 'object' || body === null || !('data' in body)) {
+  if (typeof body !== 'object' || body === null) {
+    throw new Error('The API response did not contain the expected data field.');
+  }
+  if (!('data' in body)) {
+    if (allowPlainResponse) return body as T;
     throw new Error('The API response did not contain the expected data field.');
   }
 
@@ -164,6 +180,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  getHealth: () => request<ApiHealth>('/health', undefined, true),
   getBrands: () => request<ApiBrand[]>('/brands'),
   getOrders: () => request<ApiOrder[]>('/orders'),
   getCouriers: () => request<ApiCourier[]>('/couriers'),

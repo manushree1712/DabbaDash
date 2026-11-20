@@ -82,11 +82,10 @@ Vite serves the dashboard at `http://localhost:5173`.
 ```powershell
 Set-Location backend
 npm install
-npm run db:seed
 npm run dev
 ```
 
-The API listens at `http://localhost:3000` by default. It creates the schema automatically when it starts. The seed command also initializes the schema, and inserts the existing demo fixtures only when the database has no brands; it skips seeding rather than replacing populated data.
+The API listens at `http://localhost:3000` by default. On development startup it creates or migrates the schema and inserts the existing demo fixtures only when all application tables are empty. It never replaces populated records. `npm run db:seed` is also available for an explicit, repeatable seed attempt and skips databases that already contain records.
 
 For production builds:
 
@@ -112,6 +111,7 @@ Run the frontend lint checks with `npm run lint` from the project root. There is
 | `PORT` | Backend | `3000` | Express listening port. |
 | `CORS_ORIGIN` | Backend | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated allowed browser origins. |
 | `DABBADASH_DB_PATH` | Backend | `backend/data/dabbadash.db` | Optional absolute path for the SQLite database. |
+| `DABBADASH_DEMO_SEED` | Backend | Enabled outside production | Set to `false` to disable automatic empty-database seeding, or `true` to enable it explicitly. |
 
 The checked-in `.env.example` contains only the frontend API URL. Do not put secrets in it; local `.env` files and SQLite databases are excluded from Git. CORS is not authentication: non-browser clients can call the local API.
 
@@ -164,7 +164,7 @@ To use a separate database, set `DABBADASH_DB_PATH` to an absolute path before r
 5. Inspect the assigned order and courier on the Live Map, then search the order in Customer Tracking.
 6. Advance the order to **Out for Delivery** and **Delivered**; review the updated orders and Analytics.
 
-The backend exposes a health check at `http://localhost:3000/api/health`.
+The backend exposes a health check at `http://localhost:3000/api/health`. Its `demoData` field identifies the seeded fixture database. If the API cannot be reached, the frontend displays a clearly marked, read-only local demo snapshot; changes are not persisted in that mode.
 
 For quick checks, open `http://localhost:3000/api/health` and `http://localhost:3000/api/brands`, or use the dashboard's Refresh control. The API's `POST /api/orders` endpoint accepts existing brand/menu-item IDs; the frontend does not currently provide a restaurant storefront, menu browser, or cart checkout.
 

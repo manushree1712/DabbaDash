@@ -4,6 +4,11 @@ export function createSchema(): void {
   const db = getDb();
 
   db.exec(`
+    CREATE TABLE IF NOT EXISTS app_metadata (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS brands (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       name          TEXT    NOT NULL UNIQUE,
