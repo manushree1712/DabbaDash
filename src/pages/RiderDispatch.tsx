@@ -22,6 +22,8 @@ export function RiderDispatch() {
   const {
     couriers,
     orders,
+    batches,
+    liveCouriers,
     isLoading,
     error,
     refresh,
@@ -37,9 +39,15 @@ export function RiderDispatch() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  const activeBatchedOrderIds = new Set(
+    batches
+      .filter((batch) => ['pending', 'assigned', 'in-progress'].includes(batch.status))
+      .flatMap((batch) => batch.orders.map((order) => order.id))
+  );
   const assignableOrders = orders.filter(
     (order) =>
       order.apiId !== undefined &&
+      !activeBatchedOrderIds.has(order.apiId) &&
       !order.rider &&
       order.status !== 'delivered' &&
       order.status !== 'cancelled'
@@ -161,7 +169,7 @@ export function RiderDispatch() {
             }}
             className="min-w-[220px] flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
           >
-            {assignableOrders.length === 0 && <option value="">No unassigned active orders</option>}
+            {assignableOrders.length === 0 && <option value="">No unbatched, unassigned active orders</option>}
             {assignableOrders.map((order) => (
               <option key={order.apiId} value={order.apiId}>
                 {order.id} · {order.customer} · {order.area}
@@ -218,6 +226,7 @@ export function RiderDispatch() {
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
           {riders.map((rider) => {
             const cfg = statusConfig[rider.status];
+            const courier = liveCouriers.find((candidate) => candidate.id === rider.apiId);
             const recommendation = rider.apiId === undefined
               ? undefined
               : recommendationById.get(rider.apiId);
@@ -244,7 +253,7 @@ export function RiderDispatch() {
                 </div>
 
                 {/* Stats */}
-                <div className="grid grid-cols-3 gap-2 mb-3">
+                <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   <div className="text-center bg-slate-50 rounded-lg py-2">
                     <p className="text-sm font-bold text-slate-900">{rider.deliveries}</p>
                     <p className="text-[10px] text-slate-400">Deliveries</p>
@@ -257,8 +266,16 @@ export function RiderDispatch() {
                     <p className="text-[10px] text-slate-400">Rating</p>
                   </div>
                   <div className="text-center bg-slate-50 rounded-lg py-2">
-                    <p className="text-sm font-bold text-slate-900">₹{rider.earnings}</p>
-                    <p className="text-[10px] text-slate-400">Today</p>
+                    <p className="text-sm font-bold text-slate-900">
+                      {courier ? `₹${courier.earningsToday.toLocaleString('en-IN')}` : '—'}
+                    </p>
+                    <p className="text-[10px] text-slate-400">Earnings today</p>
+                  </div>
+                  <div className="text-center bg-slate-50 rounded-lg py-2">
+                    <p className="text-sm font-bold text-slate-900">
+                      {rider.activeOrders ?? 0}/{rider.maxActiveOrders ?? 0}
+                    </p>
+                    <p className="text-[10px] text-slate-400">Active orders</p>
                   </div>
                 </div>
 

@@ -230,22 +230,3 @@ export interface CreateOrderInput {
     specialInstructions?: string;
   }>;
 }
-
-export interface OverviewStats {
-  totalOrders: number;
-  activeOrders: number;
-  avgPrepTime: number;
-  pendingDispatches: number;
-  totalOrdersTrend: number;
-  activeOrdersTrend: number;
-  avgPrepTimeTrend: number;
-  pendingDispatchesTrend: number;
-  brandStats: BrandStatItem[];
-}
-
-export interface BrandStatItem {
-  name: string;
-  orders: number;
-  revenue: number;
-  color: string;
-}

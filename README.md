@@ -33,7 +33,7 @@ flowchart LR
   State --> UI
 ```
 
-The frontend API client uses `VITE_API_BASE_URL`. `ApiDataContext` shares brands, orders, couriers, zones, and batches between pages; order and courier live data refreshes periodically. The backend creates or migrates the SQLite schema on startup and returns JSON data and errors.
+The frontend API client uses `VITE_API_BASE_URL`. `ApiDataContext` shares brands, orders, couriers, zones, and batches between pages; live data refreshes periodically, and pages are split into lazy-loaded bundles. The backend creates or migrates the SQLite schema on startup and returns JSON data and errors.
 
 ## Project structure
 
@@ -61,6 +61,7 @@ The frontend API client uses `VITE_API_BASE_URL`. `ApiDataContext` shares brands
 
 - Node.js 20 or newer and npm.
 - The project uses `better-sqlite3`, which includes a native SQLite binding. Install dependencies in both the project root and `backend/`.
+- The current backend is a local demonstration API. It has no user authentication or authorization and must not be exposed directly to the public internet.
 
 ## Installation and development
 
@@ -100,18 +101,19 @@ npm run build
 npm start
 ```
 
-There is no automated test script in either package manifest. The ESLint script exists in the frontend package, but this repository currently has no ESLint configuration; `npm run lint` exits with ESLint's “couldn't find a configuration file” error.
+Run the frontend lint checks with `npm run lint` from the project root. There is not yet an automated API or component test suite; use the demo workflow and the endpoint examples below for integration checks.
 
 ## Environment variables
 
 | Variable | Used by | Default | Description |
 |---|---|---|---|
 | `VITE_API_BASE_URL` | Frontend | `http://localhost:3000/api` | API base URL used by the Vite app. Set it in the root `.env` file. |
+| `HOST` | Backend | `127.0.0.1` | Address used by the API listener. The default is loopback-only; do not bind publicly without adding authentication and deployment protections. |
 | `PORT` | Backend | `3000` | Express listening port. |
 | `CORS_ORIGIN` | Backend | `http://localhost:5173,http://127.0.0.1:5173` | Comma-separated allowed browser origins. |
 | `DABBADASH_DB_PATH` | Backend | `backend/data/dabbadash.db` | Optional absolute path for the SQLite database. |
 
-The checked-in `.env.example` contains only the frontend API URL. Do not put secrets in it; local `.env` files and SQLite databases are excluded from Git.
+The checked-in `.env.example` contains only the frontend API URL. Do not put secrets in it; local `.env` files and SQLite databases are excluded from Git. CORS is not authentication: non-browser clients can call the local API.
 
 ## REST API
 
@@ -140,7 +142,7 @@ All data endpoints return a `{ "data": ... }` envelope. Errors use `{ "error": {
 | `PATCH` | `/api/batches/:id/assign-courier` | Assign a courier to a pending batch. |
 | `PATCH` | `/api/batches/:id/status` | Advance or cancel a batch. |
 
-Order statuses are `Received`, `In Kitchen`, `Packed`, `Out for Delivery`, and `Delivered`. The API also preserves and returns legacy `Cancelled` orders. Batch statuses are `pending`, `assigned`, `in-progress`, `completed`, and `cancelled`.
+Order statuses progress one step at a time through `Received`, `In Kitchen`, `Packed`, `Out for Delivery`, and `Delivered`; repeated requests for the current status are idempotent. Orders in active batches are advanced through the batch workflow: starting a batch moves its orders to `Out for Delivery`, and completing it moves them to `Delivered`. The API also preserves and returns legacy `Cancelled` orders. Batch statuses are `pending`, `assigned`, `in-progress`, `completed`, and `cancelled`.
 
 ## Database and seed data
 
@@ -164,6 +166,8 @@ To use a separate database, set `DABBADASH_DB_PATH` to an absolute path before r
 
 The backend exposes a health check at `http://localhost:3000/api/health`.
 
+For quick checks, open `http://localhost:3000/api/health` and `http://localhost:3000/api/brands`, or use the dashboard's Refresh control. The API's `POST /api/orders` endpoint accepts existing brand/menu-item IDs; the frontend does not currently provide a restaurant storefront, menu browser, or cart checkout.
+
 ## Screenshots
 
 Screenshots are not included in this repository yet.
@@ -178,12 +182,13 @@ Screenshots are not included in this repository yet.
 - Delivery batching uses real order coordinates only when supplied. Otherwise it labels and uses simulated zone-based locations; reported distances are approximate straight-line estimates.
 - Customer delivery ETAs are explicitly demo estimates, not route-aware predictions.
 - Preparation analytics and 20-minute alerts rely on kitchen-stage timestamps recorded by the current API. Older orders without those timestamps are excluded until they pass through the kitchen status transitions again.
-- The dashboard is a local demo without authentication, customer notifications, or production hosting configuration. Settings and Log Out are visual placeholders.
-- `npm run lint` is currently blocked by the missing ESLint configuration noted above.
+- The dashboard is a local demo without authentication, customer notifications, or production hosting configuration. Settings and Log Out are intentionally disabled demo placeholders.
+- User registration/login, customer restaurant browsing, and cart checkout are not implemented in the existing operations-dashboard architecture.
+- All API write routes are unauthenticated. The backend defaults to loopback binding to avoid exposing them on the local network; this is not a substitute for production authentication, authorization, HTTPS, and deployment hardening.
 
 ## Future enhancements
 
 - Integrate a real mapping/geocoding provider and opted-in courier GPS.
 - Add authentication, roles, and operational settings.
 - Add customer notifications and route-aware delivery estimates.
-- Add automated API/component tests and configure the existing lint script.
+- Add automated API/component tests and complete production authentication/deployment hardening.

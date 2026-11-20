@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Search, Filter } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { StatusBadge } from '../components/ui/Badge';
@@ -16,10 +16,14 @@ const statusFilters: { label: string; value: OrderStatus | 'all' }[] = [
   { label: 'Cancelled', value: 'cancelled' },
 ];
 
-export function AllOrders() {
+export function AllOrders({ initialSearch = '' }: { initialSearch?: string }) {
   const { orders, isLoading, error, refresh } = useApiData();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all');
+
+  useEffect(() => {
+    setSearch(initialSearch);
+  }, [initialSearch]);
 
   if (isLoading || error) {
     return <ApiFeedback isLoading={isLoading} error={error} onRetry={refresh} />;
@@ -44,6 +48,7 @@ export function AllOrders() {
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
+            aria-label="Search orders by ID, customer, brand, or area"
             type="text"
             placeholder="Search by ID, customer, brand…"
             value={search}
@@ -56,7 +61,9 @@ export function AllOrders() {
           {statusFilters.map((f) => (
             <button
               key={f.value}
+              type="button"
               onClick={() => setStatusFilter(f.value)}
+              aria-pressed={statusFilter === f.value}
               className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${
                 statusFilter === f.value
                   ? 'bg-violet-600 text-white shadow-sm'
@@ -77,17 +84,18 @@ export function AllOrders() {
       <Card>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
+            <caption className="sr-only">Orders with status, customer, and delivery information</caption>
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60">
-                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Order ID</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Customer</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Brand</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Items</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Area</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Total</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Time</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Rider</th>
+                <th scope="col" className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Order ID</th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Customer</th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Brand</th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Items</th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Area</th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Total</th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Time</th>
+                <th scope="col" className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Rider</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">

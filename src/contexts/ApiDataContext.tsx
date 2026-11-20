@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { BrandStat, Order, OrderStatus, Rider } from '../types';
+import type { Order, OrderStatus, Rider } from '../types';
 import { api } from '../services/api';
 import type {
   ApiBrand,
@@ -50,15 +50,6 @@ const uiStatusByApiStatus: Record<ApiOrderStatus, OrderStatus> = {
   'Out for Delivery': 'dispatched',
   Delivered: 'delivered',
   Cancelled: 'cancelled',
-};
-
-const apiStatusByUiStatus: Partial<Record<OrderStatus, ApiOrderStatus>> = {
-  pending: 'Received',
-  preparing: 'In Kitchen',
-  ready: 'Packed',
-  dispatched: 'Out for Delivery',
-  delivered: 'Delivered',
-  cancelled: 'Cancelled',
 };
 
 function formatRelativeTime(value: string): string {
@@ -116,7 +107,6 @@ function toUiCourier(courier: ApiCourier, orders: ApiOrder[]): Rider {
     rating: courier.rating,
     area: courier.currentZoneName ?? 'Unassigned',
     vehicle: courier.vehicleType,
-    earnings: courier.earningsToday,
   };
 }
 
@@ -163,9 +153,14 @@ export function ApiDataProvider({ children }: { children: ReactNode }) {
 
   const refreshLiveState = useCallback(async () => {
     try {
-      const [nextOrders, nextCouriers] = await Promise.all([api.getOrders(), api.getCouriers()]);
+      const [nextOrders, nextCouriers, nextBatches] = await Promise.all([
+        api.getOrders(),
+        api.getCouriers(),
+        api.getDeliveryBatches(),
+      ]);
       setApiOrders(nextOrders);
       setApiCouriers(nextCouriers);
+      setBatches(nextBatches);
       setLiveUpdateError(null);
     } catch (requestError) {
       setLiveUpdateError(
@@ -270,6 +265,18 @@ export function ApiDataProvider({ children }: { children: ReactNode }) {
     async (batchId: number, status: ApiDeliveryBatchStatus) => {
       const batch = await api.updateDeliveryBatchStatus(batchId, status);
       setBatches((current) => current.map((existing) => (existing.id === batchId ? batch : existing)));
+      setApiOrders((current) => {
+        const batchOrders = new Map(batch.orders.map((order) => [order.id, order]));
+        return current.map((order) => batchOrders.get(order.id) ?? order);
+      });
+      const updatedCourier = batch.courier;
+      if (updatedCourier) {
+        setApiCouriers((current) =>
+          current.map((courier) =>
+            courier.id === updatedCourier.id ? updatedCourier : courier
+          )
+        );
+      }
       return batch;
     },
     []
@@ -325,27 +332,4 @@ export function useApiData(): ApiData {
     throw new Error('useApiData must be used within an ApiDataProvider.');
   }
   return context;
-}
-
-export function getApiStatus(status: OrderStatus): Exclude<ApiOrderStatus, 'Cancelled'> {
-  const apiStatus = apiStatusByUiStatus[status];
-  if (!apiStatus) {
-    throw new Error(`No API status mapping exists for ${status}.`);
-  }
-  if (apiStatus === 'Cancelled') {
-    throw new Error('Cancelled is not an available status transition.');
-  }
-  return apiStatus;
-}
-
-export function getBrandStats(orders: Order[], brands: ApiBrand[]): BrandStat[] {
-  return brands.map((brand) => {
-    const brandOrders = orders.filter((order) => order.brandId === brand.id);
-    return {
-      name: brand.name,
-      orders: brandOrders.length,
-      revenue: brandOrders.reduce((total, order) => total + order.total, 0),
-      color: brand.color,
-    };
-  });
 }

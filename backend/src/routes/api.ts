@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { Router } from 'express';
-import type { Request, Response } from 'express';
+import type { Request } from 'express';
 import { ApiError } from '../apiError';
 import { getDb } from '../db/connection';
 import type {
@@ -32,6 +32,13 @@ const statusToDatabase: Record<OrderStatus, string> = {
   Packed: 'ready',
   'Out for Delivery': 'dispatched',
   Delivered: 'delivered',
+};
+
+const nextDatabaseOrderStatus: Record<string, string> = {
+  pending: 'preparing',
+  preparing: 'ready',
+  ready: 'dispatched',
+  dispatched: 'delivered',
 };
 
 const statusFromDatabase: Record<string, Order['status']> = {
@@ -648,7 +655,7 @@ function groupEligibleOrders(rows: OrderRow[]): OrderRow[][] {
   const groups: Array<Array<{ order: OrderRow; location: BatchLocation }>> = [];
   for (const entry of ordered) {
     const group = groups.find((candidate) =>
-      candidate.every(
+      candidate.length < MAX_BATCH_ORDERS && candidate.every(
         (member) =>
           member.location.source === entry.location.source &&
           distanceBetweenLocations(member.location, entry.location) <= MAX_BATCH_DISTANCE_KM
@@ -774,6 +781,23 @@ router.patch('/orders/:id/assign-courier', (req, res) => {
     if (order.status === 'delivered' || order.status === 'cancelled') {
       throw new ApiError(409, 'ORDER_NOT_ASSIGNABLE', 'Completed or cancelled orders cannot be assigned.');
     }
+    const activeBatch = db
+      .prepare(
+        `SELECT b.batch_ref
+         FROM delivery_batch_orders bo
+         JOIN delivery_batches b ON b.id = bo.batch_id
+         WHERE bo.order_id = ?
+           AND b.status IN ('pending', 'assigned', 'in-progress')
+         LIMIT 1`
+      )
+      .get(orderId) as { batch_ref: string } | undefined;
+    if (activeBatch) {
+      throw new ApiError(
+        409,
+        'ORDER_IN_ACTIVE_BATCH',
+        `Order is part of ${activeBatch.batch_ref}; assign its courier through Delivery Batching.`
+      );
+    }
 
     assertCourierCanAcceptOrder(courierId);
 
@@ -812,12 +836,41 @@ router.patch('/orders/:id/status', (req, res) => {
 
   const db = getDb();
   const existing = db
-    .prepare('SELECT id, status FROM orders WHERE id = ?')
-    .get(id) as { id: number; status: string } | undefined;
+    .prepare('SELECT id, status, courier_id FROM orders WHERE id = ?')
+    .get(id) as { id: number; status: string; courier_id: number | null } | undefined;
   if (!existing) throw new ApiError(404, 'ORDER_NOT_FOUND', 'Order not found.');
 
-  const now = new Date().toISOString();
   const nextStatus = statusToDatabase[status as OrderStatus];
+  if (existing.status === nextStatus) {
+    res.json({ data: getOrderOrThrow(id) });
+    return;
+  }
+  if (nextDatabaseOrderStatus[existing.status] !== nextStatus) {
+    throw new ApiError(
+      409,
+      'INVALID_ORDER_TRANSITION',
+      'Orders must move forward one step at a time through the delivery workflow.'
+    );
+  }
+  const activeBatch = db
+    .prepare(
+      `SELECT b.batch_ref
+       FROM delivery_batch_orders bo
+       JOIN delivery_batches b ON b.id = bo.batch_id
+       WHERE bo.order_id = ?
+         AND b.status IN ('pending', 'assigned', 'in-progress')
+       LIMIT 1`
+    )
+    .get(id) as { batch_ref: string } | undefined;
+  if (activeBatch) {
+    throw new ApiError(
+      409,
+      'ORDER_IN_ACTIVE_BATCH',
+      `Order is part of ${activeBatch.batch_ref}; update or cancel that batch first.`
+    );
+  }
+
+  const now = new Date().toISOString();
   if (nextStatus === 'preparing' && existing.status !== 'preparing') {
     db.prepare(
       `UPDATE orders
@@ -838,6 +891,28 @@ router.patch('/orders/:id/status', (req, res) => {
       id
     );
   }
+  if (nextStatus === 'dispatched' && existing.courier_id !== null) {
+    db.prepare(
+      "UPDATE couriers SET status = 'on-delivery' WHERE id = ? AND status = 'available'"
+    ).run(existing.courier_id);
+  } else if (nextStatus === 'delivered' && existing.courier_id !== null) {
+    db.prepare('UPDATE couriers SET deliveries_today = deliveries_today + 1 WHERE id = ?').run(
+      existing.courier_id
+    );
+    const activeOrders = (
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM orders
+           WHERE courier_id = ? AND status NOT IN ('delivered', 'cancelled')`
+        )
+        .get(existing.courier_id) as { count: number }
+    ).count;
+    if (activeOrders === 0) {
+      db.prepare(
+        "UPDATE couriers SET status = 'available' WHERE id = ? AND status = 'on-delivery'"
+      ).run(existing.courier_id);
+    }
+  }
   res.json({ data: getOrderOrThrow(id) });
 });
 
@@ -845,8 +920,14 @@ router.post('/orders', (req, res) => {
   const input = getCreateOrderInput(req);
   const db = getDb();
   const createOrder = db.transaction((order: ValidatedCreateOrder) => {
-    if (!db.prepare('SELECT id FROM brands WHERE id = ?').get(order.brandId)) {
+    const brand = db
+      .prepare('SELECT id, is_active FROM brands WHERE id = ?')
+      .get(order.brandId) as { id: number; is_active: number } | undefined;
+    if (!brand) {
       throw new ApiError(404, 'BRAND_NOT_FOUND', 'Brand not found.');
+    }
+    if (brand.is_active !== 1) {
+      throw new ApiError(409, 'BRAND_UNAVAILABLE', 'Orders cannot be placed with an inactive brand.');
     }
     if (
       order.deliveryZoneId !== undefined &&
@@ -1214,6 +1295,61 @@ router.patch('/batches/:id/status', (req, res) => {
     }
     if (!['in-progress', 'completed', 'cancelled'].includes(nextStatus)) {
       throw new ApiError(409, 'INVALID_BATCH_TRANSITION', 'The requested batch status transition is not allowed.');
+    }
+    if (nextStatus === 'in-progress' || nextStatus === 'completed') {
+      const expectedOrderStatus = nextStatus === 'in-progress' ? 'ready' : 'dispatched';
+      const nextOrderStatus = nextStatus === 'in-progress' ? 'dispatched' : 'delivered';
+      const result = db
+        .prepare(
+          `UPDATE orders
+           SET status = ?, updated_at = datetime(?)
+           WHERE id IN (SELECT order_id FROM delivery_batch_orders WHERE batch_id = ?)
+             AND status = ?`
+        )
+        .run(nextOrderStatus, new Date().toISOString(), batchId, expectedOrderStatus);
+      const orderCount = (
+        db.prepare('SELECT COUNT(*) AS count FROM delivery_batch_orders WHERE batch_id = ?').get(batchId) as {
+          count: number;
+        }
+      ).count;
+      if (orderCount < 2 || result.changes !== orderCount) {
+        throw new ApiError(
+          409,
+          'BATCH_ORDERS_OUT_OF_SYNC',
+          'Every order in the batch must be at the expected delivery stage.'
+        );
+      }
+      if (nextStatus === 'in-progress') {
+        const courier = db
+          .prepare('SELECT status FROM couriers WHERE id = ?')
+          .get(batch.courier_id) as { status: string } | undefined;
+        if (!courier || courier.status === 'offline') {
+          throw new ApiError(
+            409,
+            'COURIER_UNAVAILABLE',
+            'The assigned courier is offline and cannot start this delivery.'
+          );
+        }
+        db.prepare("UPDATE couriers SET status = 'on-delivery' WHERE id = ?").run(batch.courier_id);
+      } else if (batch.courier_id !== null) {
+        db.prepare('UPDATE couriers SET deliveries_today = deliveries_today + ? WHERE id = ?').run(
+          orderCount,
+          batch.courier_id
+        );
+        const activeOrders = (
+          db
+            .prepare(
+              `SELECT COUNT(*) AS count FROM orders
+               WHERE courier_id = ? AND status NOT IN ('delivered', 'cancelled')`
+            )
+            .get(batch.courier_id) as { count: number }
+        ).count;
+        if (activeOrders === 0) {
+          db.prepare(
+            "UPDATE couriers SET status = 'available' WHERE id = ? AND status = 'on-delivery'"
+          ).run(batch.courier_id);
+        }
+      }
     }
     db.prepare('UPDATE delivery_batches SET status = ?, updated_at = datetime(?) WHERE id = ?').run(
       nextStatus,
