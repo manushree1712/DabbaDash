@@ -25,9 +25,11 @@ const navItems: NavItem[] = [
 interface SidebarProps {
   activePage: NavPage;
   onNavigate: (page: NavPage) => void;
+  mobileOpen: boolean;
+  onClose: () => void;
 }
 
-export function Sidebar({ activePage, onNavigate }: SidebarProps) {
+export function Sidebar({ activePage, onNavigate, mobileOpen, onClose }: SidebarProps) {
   const { orders, batches } = useApiData();
   const pageBadges: Partial<Record<NavPage, number>> = {
     'all-orders': orders.length,
@@ -38,7 +40,13 @@ export function Sidebar({ activePage, onNavigate }: SidebarProps) {
   };
 
   return (
-    <aside className="w-64 h-screen bg-slate-900 flex flex-col fixed left-0 top-0 z-30 border-r border-slate-800">
+    <aside
+      id="primary-navigation"
+      aria-label="Primary navigation"
+      className={`fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r border-slate-800 bg-slate-900 transition-transform duration-200 md:visible md:translate-x-0 ${
+        mobileOpen ? 'visible translate-x-0' : 'invisible -translate-x-full'
+      }`}
+    >
       {/* Logo */}
       <div className="px-5 pt-6 pb-5 border-b border-slate-800">
         <div className="flex items-center gap-3">
@@ -53,15 +61,20 @@ export function Sidebar({ activePage, onNavigate }: SidebarProps) {
       </div>
 
       {/* Nav Items */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+      <nav aria-label="Main menu" className="flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
         <p className="text-slate-600 text-[10px] font-semibold uppercase tracking-widest px-3 mb-3">Main Menu</p>
         {navItems.map(({ id, label, icon: Icon }) => {
           const isActive = activePage === id;
           const badge = pageBadges[id];
           return (
             <button
+              type="button"
               key={id}
-              onClick={() => onNavigate(id)}
+              onClick={() => {
+                onNavigate(id);
+                onClose();
+              }}
+              aria-current={isActive ? 'page' : undefined}
               className={`
                 w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150 group
                 ${isActive
@@ -91,20 +104,30 @@ export function Sidebar({ activePage, onNavigate }: SidebarProps) {
 
       {/* Bottom */}
       <div className="px-3 pb-4 pt-2 border-t border-slate-800 space-y-0.5">
-        <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-all duration-150">
+        <button
+          type="button"
+          disabled
+          title="Settings are not available in this demo."
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-500 opacity-60 cursor-not-allowed"
+        >
           <Settings size={18} className="text-slate-500" />
-          Settings
+          Settings <span className="ml-auto text-[9px] uppercase tracking-wide">Demo</span>
         </button>
-        <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:text-red-400 hover:bg-red-900/20 transition-all duration-150">
+        <button
+          type="button"
+          disabled
+          title="Sign-in is not enabled for this demo."
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-500 opacity-60 cursor-not-allowed"
+        >
           <LogOut size={18} className="text-slate-500" />
-          Log Out
+          Log Out <span className="ml-auto text-[9px] uppercase tracking-wide">Demo</span>
         </button>
         <div className="mt-3 flex items-center gap-3 px-3 py-2.5 rounded-xl bg-slate-800">
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-400 to-orange-400 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
             M
           </div>
           <div className="min-w-0">
-            <p className="text-white text-xs font-semibold truncate">Manushree</p>
+            <p className="text-white text-xs font-semibold truncate">Demo operator</p>
             <p className="text-slate-500 text-[10px] truncate">Ops Manager</p>
           </div>
         </div>

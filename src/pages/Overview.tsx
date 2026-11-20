@@ -6,7 +6,7 @@ import { KitchenActivity } from '../components/overview/KitchenActivity';
 import { KitchenAlerts } from '../components/overview/KitchenAlerts';
 import type { NavPage } from '../types';
 import { useApiData } from '../contexts/ApiDataContext';
-import { getBrandStats } from '../contexts/ApiDataContext';
+import { getBrandStats } from '../contexts/apiDataUtils';
 import { ApiFeedback } from '../components/ui/ApiFeedback';
 import { getAverageKitchenPrepMinutes, getCompletedKitchenDurations } from '../analytics';
 
@@ -34,8 +34,10 @@ export function Overview({ onNavigate }: OverviewProps) {
     <div className="space-y-6">
       {/* Welcome */}
       <div>
-        <h2 className="text-xl font-bold text-slate-900">Good evening, Manushree 👋</h2>
-        <p className="text-sm text-slate-500 mt-0.5">Here's what's happening across your kitchens today.</p>
+        <h2 className="text-xl font-bold text-slate-900">Kitchen and delivery overview</h2>
+        <p className="text-sm text-slate-500 mt-0.5">
+          Current order and delivery activity across your kitchens.
+        </p>
       </div>
 
       {/* KPI Cards */}

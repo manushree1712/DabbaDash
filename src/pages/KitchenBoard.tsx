@@ -2,7 +2,8 @@ import { StatusBadge } from '../components/ui/Badge';
 import { Clock, Package, ArrowRight } from 'lucide-react';
 import type { OrderStatus, Order } from '../types';
 import { useState } from 'react';
-import { useApiData, getApiStatus } from '../contexts/ApiDataContext';
+import { useApiData } from '../contexts/ApiDataContext';
+import { getApiStatus } from '../contexts/apiDataUtils';
 import { ApiFeedback } from '../components/ui/ApiFeedback';
 
 const columns: { status: OrderStatus; label: string; color: string; bg: string; border: string }[] = [
@@ -29,10 +30,12 @@ const nextStatusLabel: Partial<Record<OrderStatus, string>> = {
 function OrderCard({
   order,
   isUpdating,
+  activeBatchRef,
   onAdvance,
 }: {
   order: Order;
   isUpdating: boolean;
+  activeBatchRef?: string;
   onAdvance: (order: Order, status: OrderStatus) => void;
 }) {
   const next = nextStatus[order.status];
@@ -57,15 +60,21 @@ function OrderCard({
           <span>Rider: <span className="font-medium text-slate-700">{order.rider}</span></span>
         </div>
       )}
+      {activeBatchRef && (
+        <p className="mt-2 rounded-lg bg-sky-50 px-2.5 py-2 text-[11px] text-sky-800">
+          In batch <span className="font-semibold">{activeBatchRef}</span>. Manage delivery from Delivery Batching.
+        </p>
+      )}
       {next && (
         <button
           type="button"
-          disabled={isUpdating || order.apiId === undefined}
+          disabled={isUpdating || order.apiId === undefined || activeBatchRef !== undefined}
           onClick={() => onAdvance(order, next)}
+          title={activeBatchRef ? 'Manage this order through its delivery batch.' : undefined}
           className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-[11px] font-semibold text-violet-700 transition-colors hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {isUpdating ? 'Updating…' : nextStatusLabel[order.status]}
-          {!isUpdating && <ArrowRight size={12} />}
+          {isUpdating ? 'Updating…' : activeBatchRef ? 'Manage batch delivery' : nextStatusLabel[order.status]}
+          {!isUpdating && !activeBatchRef && <ArrowRight size={12} />}
         </button>
       )}
     </div>
@@ -73,8 +82,13 @@ function OrderCard({
 }
 
 export function KitchenBoard() {
-  const { orders, isLoading, error, refresh, updateOrderStatus } = useApiData();
+  const { orders, batches, isLoading, error, refresh, updateOrderStatus } = useApiData();
   const [updatingOrderId, setUpdatingOrderId] = useState<number | null>(null);
+  const activeBatchByOrder = new Map(
+    batches
+      .filter((batch) => ['pending', 'assigned', 'in-progress'].includes(batch.status))
+      .flatMap((batch) => batch.orders.map((order) => [order.orderRef, batch.batchRef] as const))
+  );
 
   async function advanceOrder(order: Order, status: OrderStatus) {
     if (order.apiId === undefined) return;
@@ -115,6 +129,7 @@ export function KitchenBoard() {
                       key={order.id}
                       order={order}
                       isUpdating={updatingOrderId === order.apiId}
+                      activeBatchRef={activeBatchByOrder.get(order.id)}
                       onAdvance={advanceOrder}
                     />
                   ))

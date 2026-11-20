@@ -33,17 +33,6 @@ export interface Order {
   area: string;
 }
 
-export interface KitchenStation {
-  id: string;
-  name: string;
-  brand: string;
-  activeOrders: number;
-  pendingOrders: number;
-  status: 'idle' | 'busy' | 'overloaded';
-  avgPrepTime: number;
-  staff: number;
-}
-
 export interface Rider {
   apiId?: number;
   id: string;
@@ -57,7 +46,6 @@ export interface Rider {
   rating: number;
   area: string;
   vehicle: 'bike' | 'bicycle' | 'scooter';
-  earnings: number;
 }
 
 export interface BrandStat {
@@ -65,21 +53,4 @@ export interface BrandStat {
   orders: number;
   revenue: number;
   color: string;
-}
-
-export interface DailyTrend {
-  day: string;
-  orders: number;
-  revenue: number;
-  avgDelivery: number;
-}
-
-export interface DeliveryBatch {
-  id: string;
-  area: string;
-  orders: Order[];
-  rider?: string;
-  estimatedTime: number;
-  status: 'pending' | 'assigned' | 'in-progress' | 'completed';
-  distance: number;
 }
