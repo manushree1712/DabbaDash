@@ -8,6 +8,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
+    "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
+    "test": "tsx --test test/api.test.ts",
     "db:seed": "tsx src/db/seed.ts"
   },
   "dependencies": {

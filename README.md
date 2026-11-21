@@ -33,7 +33,7 @@ flowchart LR
   State --> UI
 ```
 
-The frontend API client uses `VITE_API_BASE_URL`. `ApiDataContext` shares brands, orders, couriers, zones, and batches between pages; live data refreshes periodically, and pages are split into lazy-loaded bundles. The backend creates or migrates the SQLite schema on startup and returns JSON data and errors.
+The frontend API client uses `VITE_API_BASE_URL`. `ApiDataContext` shares brands, orders, couriers, zones, and batches between pages; live data refreshes periodically, and pages are split into lazy-loaded bundles. The backend creates or migrates the SQLite schema on startup and returns JSON data and errors. Express application configuration is kept separate from server startup, enabling isolated integration tests without opening the canonical database.
 
 ## Project structure
 
@@ -43,8 +43,12 @@ The frontend API client uses `VITE_API_BASE_URL`. `ApiDataContext` shares brands
 │   ├── src/
 │   │   ├── db/              # SQLite connection, schema/migrations, seed data
 │   │   ├── routes/api.ts    # REST endpoints and business rules
+│   │   ├── app.ts           # Express middleware, docs and error handling
+│   │   ├── logger.ts        # Sanitized structured operational logs
+│   │   ├── openapi.ts       # Verified OpenAPI 3.0 API contract
 │   │   ├── types/           # API and database types
-│   │   └── index.ts         # Express server and health endpoint
+│   │   └── index.ts         # Server startup and shutdown
+│   ├── test/                # Isolated API integration tests
 │   ├── data/                # Local SQLite database (ignored by Git)
 │   └── package.json
 ├── src/
@@ -100,7 +104,15 @@ npm run build
 npm start
 ```
 
-Run the frontend lint checks with `npm run lint` from the project root. There is not yet an automated API or component test suite; use the demo workflow and the endpoint examples below for integration checks.
+Run the frontend lint checks with `npm run lint` from the project root. Backend integration tests use Node's built-in test runner and an isolated temporary SQLite database; they do not seed, read, or modify `backend/data/dabbadash.db`.
+
+```powershell
+Set-Location backend
+npm test
+npm run typecheck
+npm run typecheck:test
+npm run build
+```
 
 ## Environment variables
 
@@ -118,6 +130,7 @@ The checked-in `.env.example` contains only the frontend API URL. Do not put sec
 ## REST API
 
 All data endpoints return a `{ "data": ... }` envelope. Errors use `{ "error": { "code": "...", "message": "..." } }`.
+The generated OpenAPI 3.0 JSON document is available while the backend is running at `http://localhost:3000/api/openapi.json`.
 
 | Method | Endpoint | Purpose |
 |---|---|---|
@@ -183,6 +196,7 @@ Screenshots are not included in this repository yet.
 - Customer delivery ETAs are explicitly demo estimates, not route-aware predictions.
 - Preparation analytics and 20-minute alerts rely on kitchen-stage timestamps recorded by the current API. Older orders without those timestamps are excluded until they pass through the kitchen status transitions again.
 - The dashboard is a local demo without authentication, customer notifications, or production hosting configuration. Settings and Log Out are intentionally disabled demo placeholders.
+- The OpenAPI document is served locally for development/demo use. Authentication is deferred to preserve the existing no-login dashboard workflows; API writes remain unauthenticated.
 - User registration/login, customer restaurant browsing, and cart checkout are not implemented in the existing operations-dashboard architecture.
 - All API write routes are unauthenticated. The backend defaults to loopback binding to avoid exposing them on the local network; this is not a substitute for production authentication, authorization, HTTPS, and deployment hardening.
 
@@ -191,4 +205,4 @@ Screenshots are not included in this repository yet.
 - Integrate a real mapping/geocoding provider and opted-in courier GPS.
 - Add authentication, roles, and operational settings.
 - Add customer notifications and route-aware delivery estimates.
-- Add automated API/component tests and complete production authentication/deployment hardening.
+- Expand the automated API tests with browser/component coverage and complete production authentication/deployment hardening.

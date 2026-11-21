@@ -1,6 +1,7 @@
 import { getDb } from './connection';
 import { closeDb } from './connection';
 import { createSchema } from './schema';
+import { logger } from '../logger';
 
 interface InsertBrand { name: string; cuisine_type: string; color: string }
 interface InsertMenuItem { brand_id: number; name: string; description: string; price: number; category: string }
@@ -52,7 +53,7 @@ export function seedDatabase(): void {
       return false;
     }
 
-    console.log('🌱 Seeding database…');
+    logger.info('Seeding empty database.', { event: 'demo_seed_started' });
 
     // ── BRANDS ────────────────────────────────────────────────────────────────
     const brands: InsertBrand[] = [
@@ -173,9 +174,18 @@ export function seedDatabase(): void {
   });
 
   if (seed()) {
-    console.log('✅ Seed complete — 3 brands, 20 menu items, 15 orders, 6 couriers, 4 zones.');
+    logger.info('Demo data seed complete.', {
+      event: 'demo_seed_completed',
+      brands: 3,
+      menuItems: 20,
+      orders: 15,
+      couriers: 6,
+      zones: 4,
+    });
   } else {
-    console.log('⏭  Database already contains records — skipping seed to preserve existing data.');
+    logger.info('Database contains records; seed skipped to preserve existing data.', {
+      event: 'demo_seed_skipped',
+    });
   }
 }
 
@@ -191,7 +201,10 @@ if (require.main === module) {
     createSchema();
     seedDatabase();
   } catch (error) {
-    console.error('❌ Database seeding failed.', error);
+    logger.error('Database seeding failed.', {
+      event: 'demo_seed_failed',
+      errorType: error instanceof Error ? error.name : 'UnknownError',
+    });
     process.exitCode = 1;
   } finally {
     closeDb();
